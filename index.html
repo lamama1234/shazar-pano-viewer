@@ -193,13 +193,14 @@
       pointer-events: none; /* Let pointer events pass or handle symmetrically */
     }
 
-    /* SPLIT DIVIDER BAR */
+    /* SPLIT DIVIDER BAR - HORIZONTAL (DESKTOP) & VERTICAL (MOBILE PORTRAIT) */
     .split-divider {
       position: absolute;
       top: 0;
       bottom: 0;
       left: 50%;
       width: 4px;
+      height: auto;
       background: #ffffff;
       transform: translateX(-50%);
       z-index: 20;
@@ -234,12 +235,12 @@
       width: 22px;
       height: 22px;
       fill: #222;
+      transition: transform 0.3s ease;
     }
 
     /* BADGES (BEFORE / AFTER LABELS) */
     .view-badge {
       position: absolute;
-      top: 20px;
       padding: 6px 16px;
       border-radius: 20px;
       font-size: 0.9rem;
@@ -249,11 +250,12 @@
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       pointer-events: none;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.3s ease, top 0.3s ease, bottom 0.3s ease, left 0.3s ease, right 0.3s ease;
       box-shadow: 0 4px 15px rgba(0,0,0,0.4);
     }
 
     .badge-before {
+      top: 20px;
       right: 20px;
       background: rgba(220, 53, 69, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.3);
@@ -261,10 +263,47 @@
     }
 
     .badge-after {
+      top: 20px;
       left: 20px;
       background: rgba(40, 167, 69, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.3);
       color: #fff;
+    }
+
+    /* MOBILE PORTRAIT ORIENTATION: TOP / BOTTOM SPLIT */
+    .is-portrait .split-divider {
+      top: 50%;
+      bottom: auto;
+      left: 0;
+      right: 0;
+      width: 100%;
+      height: 4px;
+      transform: translateY(-50%);
+      cursor: ns-resize;
+    }
+
+    .is-portrait .split-handle {
+      cursor: ns-resize;
+    }
+
+    .is-portrait .split-handle svg {
+      transform: rotate(90deg);
+    }
+
+    .is-portrait .badge-before {
+      top: 14px;
+      right: 14px;
+      font-size: 0.78rem;
+      padding: 4px 12px;
+    }
+
+    .is-portrait .badge-after {
+      top: auto;
+      bottom: 125px; /* Above bottom control dock */
+      right: 14px;
+      left: auto;
+      font-size: 0.78rem;
+      padding: 4px 12px;
     }
 
     /* FLOATING BOTTOM CONTROLS & PHOTO SELECTOR */
@@ -674,7 +713,8 @@
     let isSynchronized = true;
     let autoRotate = false;
     let viewMode = 'split'; // 'split', 'before', 'after'
-    let splitPercent = 50; // percentage from left (0 to 100)
+    let splitPercent = 50; // percentage from left/top (0 to 100)
+    let isPortrait = false;
 
     // DOM Elements
     const viewportContainer = document.getElementById('viewport-container');
@@ -843,26 +883,54 @@
     }
 
     /* ==========================================================================
-       SPLIT VIEW & VIEW MODES
+       SPLIT VIEW & VIEW MODES (HORIZONTAL FOR DESKTOP / VERTICAL FOR MOBILE PORTRAIT)
        ========================================================================== */
+    function checkOrientation() {
+      // Consider portrait when height > width and width <= 850px
+      const w = viewportContainer.clientWidth || window.innerWidth;
+      const h = viewportContainer.clientHeight || window.innerHeight;
+      const wasPortrait = isPortrait;
+      isPortrait = (h > w && w <= 850);
+
+      document.body.classList.toggle('is-portrait', isPortrait);
+      return wasPortrait !== isPortrait;
+    }
+
     function updateSplitPosition(percent) {
       splitPercent = Math.max(0, Math.min(100, percent));
+      checkOrientation();
 
       if (viewMode === 'split') {
         splitDivider.style.display = 'block';
-        splitDivider.style.left = `${splitPercent}%`;
-        // Clip 'after' image container so left side is 'after' and right side is 'before'
-        containerAfter.style.clipPath = `polygon(0 0, ${splitPercent}% 0, ${splitPercent}% 100%, 0 100%)`;
+
+        if (isPortrait) {
+          // Top / Bottom layout:
+          // Top: Before (layer 1)
+          // Bottom: After (layer 2)
+          splitDivider.style.left = '0';
+          splitDivider.style.top = `${splitPercent}%`;
+          containerAfter.style.clipPath = `polygon(0 ${splitPercent}%, 100% ${splitPercent}%, 100% 100%, 0 100%)`;
+        } else {
+          // Left / Right layout:
+          splitDivider.style.top = '0';
+          splitDivider.style.left = `${splitPercent}%`;
+          containerAfter.style.clipPath = `polygon(0 0, ${splitPercent}% 0, ${splitPercent}% 100%, 0 100%)`;
+        }
+
         containerBefore.style.display = 'block';
         containerAfter.style.display = 'block';
         badgeBefore.style.opacity = splitPercent > 90 ? '0.2' : '1';
         badgeAfter.style.opacity = splitPercent < 10 ? '0.2' : '1';
+
       } else if (viewMode === 'before') {
         splitDivider.style.display = 'none';
-        containerAfter.style.clipPath = 'polygon(0 0, 0 0, 0 100%, 0 100%)';
+        containerAfter.style.clipPath = isPortrait 
+          ? 'polygon(0 100%, 100% 100%, 100% 100%, 0 100%)' 
+          : 'polygon(0 0, 0 0, 0 100%, 0 100%)';
         containerBefore.style.display = 'block';
         badgeBefore.style.opacity = '1';
         badgeAfter.style.opacity = '0';
+
       } else if (viewMode === 'after') {
         splitDivider.style.display = 'none';
         containerAfter.style.clipPath = 'polygon(0 0, 100% 0, 100% 100%, 0 100%)';
@@ -905,9 +973,18 @@
     function onDividerMove(e) {
       if (!isDraggingDivider) return;
       const rect = viewportContainer.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const x = clientX - rect.left;
-      const percent = (x / rect.width) * 100;
+      let percent;
+
+      if (isPortrait) {
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const y = clientY - rect.top;
+        percent = (y / rect.height) * 100;
+      } else {
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const x = clientX - rect.left;
+        percent = (x / rect.width) * 100;
+      }
+
       updateSplitPosition(percent);
     }
 
@@ -940,14 +1017,24 @@
     function getInteractedViewer(e) {
       if (isSynchronized) return 'both';
       const rect = viewportContainer.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const x = clientX - rect.left;
-      const percent = (x / rect.width) * 100;
-      // If clicked on left side (within After clip area)
-      if (viewMode === 'split') {
-        return percent <= splitPercent ? viewerAfter : viewerBefore;
+
+      if (isPortrait) {
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const y = clientY - rect.top;
+        const percent = (y / rect.height) * 100;
+        if (viewMode === 'split') {
+          return percent >= splitPercent ? viewerAfter : viewerBefore;
+        }
+        return viewMode === 'after' ? viewerAfter : viewerBefore;
+      } else {
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const x = clientX - rect.left;
+        const percent = (x / rect.width) * 100;
+        if (viewMode === 'split') {
+          return percent <= splitPercent ? viewerAfter : viewerBefore;
+        }
+        return viewMode === 'after' ? viewerAfter : viewerBefore;
       }
-      return viewMode === 'after' ? viewerAfter : viewerBefore;
     }
 
     function onPointerDown(e) {
@@ -1076,12 +1163,13 @@
       }
     });
 
-    // Responsive Window Resize
+    // Responsive Window Resize & Orientation Change
     window.addEventListener('resize', () => {
       const w = viewportContainer.clientWidth;
       const h = viewportContainer.clientHeight;
       viewerBefore.resize(w, h);
       viewerAfter.resize(w, h);
+      updateSplitPosition(splitPercent);
     });
 
     /* ==========================================================================
