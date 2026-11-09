@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>שזר קו אדום - צופה עבודות</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Three.js CDN for equirectangular 360 panorama rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --primary: #e63946;
+      --primary-dark: #b71c1c;
+      --accent: #1d3557;
+      --bg-dark: #0f141c;
+      --panel-bg: rgba(20, 27, 38, 0.85);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --text-main: #f1faee;
+      --text-muted: #a8b2d1;
+      --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      font-family: 'Assistant', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      height: 64px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #e63946, #e76f51);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 10px rgba(230, 57, 70, 0.4);
+    }
+
+    .badge-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: #fff;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      background: linear-gradient(90deg, #fff, #ffccd5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* QUICK ACTIONS IN HEADER */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-main);
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn.active {
+      background: var(--primary);
+      border-color: #ff6b6b;
+      box-shadow: 0 2px 12px rgba(230, 57, 70, 0.45);
+    }
+
+    .btn-icon-only {
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    /* MAIN VIEWPORT */
+    .viewport-container {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* CANVASES */
+    .pano-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #pano-container-before {
+      z-index: 1;
+    }
+
+    #pano-container-after {
+      z-index: 2;
+      /* Clipped dynamically via clip-path */
+      clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+      pointer-events: none; /* Let pointer events pass or handle symmetrically */
+    }
+
+    /* SPLIT DIVIDER BAR */
+    .split-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      background: #ffffff;
+      transform: translateX(-50%);
+      z-index: 20;
+      cursor: ew-resize;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.7);
+    }
+
+    .split-handle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 44px;
+      height: 44px;
+      background: #ffffff;
+      border: 3px solid var(--primary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      cursor: ew-resize;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .split-handle:hover, .split-divider.dragging .split-handle {
+      transform: translate(-50%, -50%) scale(1.12);
+      box-shadow: 0 6px 20px rgba(230, 57, 70, 0.6);
+    }
+
+    .split-handle svg {
+      width: 22px;
+      height: 22px;
+      fill: #222;
+    }
+
+    /* BADGES (BEFORE / AFTER LABELS) */
+    .view-badge {
+      position: absolute;
+      top: 20px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      z-index: 15;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    }
+
+    .badge-before {
+      right: 20px;
+      background: rgba(220, 53, 69, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #fff;
+    }
+
+    .badge-after {
+      left: 20px;
+      background: rgba(40, 167, 69, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #fff;
+    }
+
+    /* FLOATING BOTTOM CONTROLS & PHOTO SELECTOR */
+    .controls-overlay {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      max-width: 95%;
+      pointer-events: auto;
+    }
+
+    .segmented-control {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 30px;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: var(--shadow);
+    }
+
+    .segmented-control button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      padding: 8px 18px;
+      border-radius: 24px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .segmented-control button:hover {
+      color: #fff;
+    }
+
+    .segmented-control button.active {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(230, 57, 70, 0.5);
+    }
+
+    /* PHOTO SET SELECTOR BAR */
+    .sets-scroller-card {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+      max-width: 90vw;
+      scrollbar-width: thin;
+    }
+
+    .sets-scroller-card::-webkit-scrollbar {
+      height: 4px;
+    }
+    .sets-scroller-card::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+    }
+
+    .set-btn {
+      flex: 0 0 auto;
+      padding: 6px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.2s ease;
+      min-width: 65px;
+    }
+
+    .set-btn span.name {
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .set-btn span.tag {
+      font-size: 0.65rem;
+      opacity: 0.7;
+    }
+
+    .set-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      transform: translateY(-2px);
+    }
+
+    .set-btn.active {
+      background: linear-gradient(135deg, #1d3557, #457b9d);
+      border-color: #a8dadc;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(69, 123, 157, 0.4);
+      transform: translateY(-2px);
+    }
+
+    /* CAMERA & NAVIGATION TOOLBAR (Top Left or Right) */
+    .cam-toolbar {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 25;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tool-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--panel-border);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .tool-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: scale(1.05);
+    }
+
+    .tool-btn.active {
+      background: #2a9d8f;
+      border-color: #70e000;
+    }
+
+    .tool-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* Tooltip */
+    .tool-btn[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      right: 50px;
+      white-space: nowrap;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      pointer-events: none;
+    }
+
+    /* LOADING SPINNER */
+    .loader-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 14, 20, 0.8);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .loader-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.15);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loader-text {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f1faee;
+    }
+
+    /* INSTRUCTIONS TOAST / OVERLAY */
+    .hint-toast {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      z-index: 15;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      animation: fadeInOut 6s forwards;
+    }
+
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translate(-50%, -10px); }
+      15% { opacity: 1; transform: translate(-50%, 0); }
+      80% { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -10px); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      header {
+        height: 56px;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.05rem;
+      }
+      .controls-overlay {
+        bottom: 16px;
+        gap: 8px;
+      }
+      .segmented-control button {
+        padding: 6px 12px;
+        font-size: 0.78rem;
+      }
+      .set-btn {
+        min-width: 55px;
+        padding: 4px 8px;
+      }
+      .cam-toolbar {
+        top: 12px;
+        left: 12px;
+      }
+      .tool-btn {
+        width: 36px;
+        height: 36px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand-title">
+      <div class="badge-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        </svg>
+      </div>
+      <div>
+        <h1>שזר קו אדום - צופה עבודות</h1>
+        <div class="subtitle">השוואת תמונות פנורמיות 360° • לפני ותוך כדי עבודות התשתית והפיתוח</div>
+      </div>
+    </div>
+
+    <!-- HEADER STATUS / SHORTCUTS -->
+    <div class="header-actions">
+      <button id="btn-sync-toggle" class="btn active" title="סנכרון תנועה בין התמונות">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+        </svg>
+        <span id="sync-label">סנכרון פעיל</span>
+      </button>
+
+      <button id="btn-fullscreen" class="btn btn-icon-only" title="מסך מלא">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- PANORAMIC VIEWPORT -->
+  <div class="viewport-container" id="viewport-container">
+
+    <!-- BEFORE (LAYER 1 - Base layer) -->
+    <div id="pano-container-before" class="pano-layer"></div>
+
+    <!-- AFTER (LAYER 2 - Overlaid with clip-path) -->
+    <div id="pano-container-after" class="pano-layer"></div>
+
+    <!-- LABELS -->
+    <div id="badge-before" class="view-badge badge-before">לפני העבודות (1)</div>
+    <div id="badge-after" class="view-badge badge-after">תוך כדי העבודות (2)</div>
+
+    <!-- INTERACTION HINT -->
+    <div class="hint-toast">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg>
+      גרור לסיבוב 360° | גלול לזום | הזז את הקו להשוואה
+    </div>
+
+    <!-- SPLIT DIVIDER -->
+    <div class="split-divider" id="split-divider">
+      <div class="split-handle" id="split-handle" title="גרור להשוואה">
+        <svg viewBox="0 0 24 24">
+          <path d="M8 7l-5 5 5 5V7zm8 0v10l5-5-5-5z"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- CAMERA NAVIGATION CONTROLS -->
+    <div class="cam-toolbar">
+      <button class="tool-btn" id="btn-zoom-in" data-tip="התקרב (+)">
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+      </button>
+      <button class="tool-btn" id="btn-zoom-out" data-tip="התרחק (-)">
+        <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+      </button>
+      <button class="tool-btn" id="btn-reset-cam" data-tip="איפוס מבט">
+        <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+      </button>
+      <button class="tool-btn" id="btn-autorotate" data-tip="סיבוב אוטומטי">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+      </button>
+    </div>
+
+    <!-- FLOATING BOTTOM DOCK: VIEW MODES & PHOTO SET SELECTOR -->
+    <div class="controls-overlay">
+      <!-- VIEW MODES -->
+      <div class="segmented-control" role="tablist">
+        <button id="view-mode-before" role="tab" aria-selected="false">
+          לפני בלבד
+        </button>
+        <button id="view-mode-split" class="active" role="tab" aria-selected="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v18H3zm10 0h8v18h-8z"/></svg>
+          מבט מפוצל
+        </button>
+        <button id="view-mode-after" role="tab" aria-selected="false">
+          תוך כדי בלבד
+        </button>
+      </div>
+
+      <!-- 8 PHOTO SET SELECTOR -->
+      <div class="sets-scroller-card" id="sets-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- LOADING OVERLAY -->
+    <div class="loader-overlay" id="loader">
+      <div class="spinner"></div>
+      <div class="loader-text" id="loader-text">טוען תמונות פנורמיות...</div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       CONFIGURATION & DATA
+       ========================================================================== */
+    const PHOTO_SETS = [
+      { id: 'a', hebrewName: "סט א'", title: 'שזר-שוש עטרי', before: 'a1.jpg', after: 'a2.jpg' },
+      { id: 'b', hebrewName: "סט ב'", title: 'שזר-דודו דותן', before: 'b1.jpg', after: 'b2.jpg' },
+      { id: 'c', hebrewName: "סט ג'", title: 'שזר-מוטה גור', before: 'c1.jpg', after: 'c2.jpg' },
+      { id: 'd', hebrewName: "סט ד'", title: 'שזר-משפחת מלבסקי', before: 'd1.jpg', after: 'd2.jpg' },
+      { id: 'e', hebrewName: "סט ה'", title: 'שזר-אמנון ותמר', before: 'e1.jpg', after: 'e2.jpg' },
+      { id: 'f', hebrewName: "סט ו'", title: 'שזר-בני ברמן', before: 'f1.jpg', after: 'f2.jpg' },
+      { id: 'g', hebrewName: "סט ז'", title: 'שזר-קניון עיר ימים', before: 'g1.jpg', after: 'g2.jpg' },
+      { id: 'h', hebrewName: "סט ח'", title: 'שזר-אהוד מנור', before: 'h1.jpg', after: 'h2.jpg' }
+    ];
+
+    let currentSetIndex = 0;
+    let isSynchronized = true;
+    let autoRotate = false;
+    let viewMode = 'split'; // 'split', 'before', 'after'
+    let splitPercent = 50; // percentage from left (0 to 100)
+
+    // DOM Elements
+    const viewportContainer = document.getElementById('viewport-container');
+    const containerBefore = document.getElementById('pano-container-before');
+    const containerAfter = document.getElementById('pano-container-after');
+    const splitDivider = document.getElementById('split-divider');
+    const badgeBefore = document.getElementById('badge-before');
+    const badgeAfter = document.getElementById('badge-after');
+    const loader = document.getElementById('loader');
+    const loaderText = document.getElementById('loader-text');
+    const btnSync = document.getElementById('btn-sync-toggle');
+    const syncLabel = document.getElementById('sync-label');
+    const setsContainer = document.getElementById('sets-container');
+
+    const btnModeBefore = document.getElementById('view-mode-before');
+    const btnModeSplit = document.getElementById('view-mode-split');
+    const btnModeAfter = document.getElementById('view-mode-after');
+
+    /* ==========================================================================
+       THREE.JS PANORAMA ENGINE
+       ========================================================================== */
+    class PanoViewer {
+      constructor(container, isBeforeSide) {
+        this.container = container;
+        this.isBeforeSide = isBeforeSide;
+
+        this.lon = 90; // degrees
+        this.lat = 0;  // degrees
+        this.targetLon = 90;
+        this.targetLat = 0;
+        this.fov = 75;
+        this.minFov = 30;
+        this.maxFov = 100;
+
+        this.initScene();
+      }
+
+      initScene() {
+        const width = this.container.clientWidth || window.innerWidth;
+        const height = this.container.clientHeight || window.innerHeight;
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(this.fov, width / height, 1, 1100);
+        this.camera.target = new THREE.Vector3(0, 0, 0);
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(width, height);
+        this.container.appendChild(this.renderer.domElement);
+
+        // Inverted sphere for 360 panorama projection
+        const geometry = new THREE.SphereGeometry(500, 64, 40);
+        geometry.scale(-1, 1, 1);
+
+        this.material = new THREE.MeshBasicMaterial();
+        this.mesh = new THREE.Mesh(geometry, this.material);
+        this.scene.add(this.mesh);
+
+        this.textureLoader = new THREE.TextureLoader();
+      }
+
+      loadPanorama(url) {
+        return new Promise((resolve, reject) => {
+          this.textureLoader.load(
+            url,
+            (texture) => {
+              texture.minFilter = THREE.LinearFilter;
+              texture.magFilter = THREE.LinearFilter;
+              if (this.material.map) this.material.map.dispose();
+              this.material.map = texture;
+              this.material.needsUpdate = true;
+              resolve();
+            },
+            undefined,
+            (err) => reject(err)
+          );
+        });
+      }
+
+      update(deltaTime) {
+        if (autoRotate) {
+          this.targetLon += 0.05;
+        }
+
+        // Smooth damping
+        this.lon += (this.targetLon - this.lon) * 0.15;
+        this.lat += (this.targetLat - this.lat) * 0.15;
+
+        // Clamp latitude to prevent flipping at poles
+        this.lat = Math.max(-85, Math.min(85, this.lat));
+        this.targetLat = Math.max(-85, Math.min(85, this.targetLat));
+
+        const phi = THREE.MathUtils.degToRad(90 - this.lat);
+        const theta = THREE.MathUtils.degToRad(this.lon);
+
+        this.camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+        this.camera.target.y = 500 * Math.cos(phi);
+        this.camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+
+        this.camera.lookAt(this.camera.target);
+        this.camera.fov = this.fov;
+        this.camera.updateProjectionMatrix();
+
+        this.renderer.render(this.scene, this.camera);
+      }
+
+      resize(width, height) {
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(width, height);
+      }
+
+      setFov(val) {
+        this.fov = Math.max(this.minFov, Math.min(this.maxFov, val));
+      }
+    }
+
+    // Instantiate Before & After Viewers
+    const viewerBefore = new PanoViewer(containerBefore, true);
+    const viewerAfter = new PanoViewer(containerAfter, false);
+
+    /* ==========================================================================
+       PHOTO SETS RENDERING & SWITCHING
+       ========================================================================== */
+    function buildSetSelector() {
+      setsContainer.innerHTML = '';
+      PHOTO_SETS.forEach((set, index) => {
+        const btn = document.createElement('button');
+        btn.className = `set-btn ${index === currentSetIndex ? 'active' : ''}`;
+        btn.innerHTML = `
+          <span class="name">${set.hebrewName}</span>
+          <span class="tag">${set.title}</span>
+        `;
+        btn.addEventListener('click', () => switchPhotoSet(index));
+        setsContainer.appendChild(btn);
+      });
+    }
+
+    async function switchPhotoSet(index) {
+      if (index === currentSetIndex && viewerBefore.material.map) return;
+      currentSetIndex = index;
+
+      // Update UI active states
+      const buttons = setsContainer.querySelectorAll('.set-btn');
+      buttons.forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+        if (i === index) btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      });
+
+      const current = PHOTO_SETS[index];
+      loaderText.innerText = `טוען את ${current.hebrewName} (${current.title})...`;
+      loader.classList.add('show');
+
+      try {
+        await Promise.all([
+          viewerBefore.loadPanorama(current.before),
+          viewerAfter.loadPanorama(current.after)
+        ]);
+      } catch (err) {
+        console.error("Error loading panoramic images:", err);
+      } finally {
+        setTimeout(() => {
+          loader.classList.remove('show');
+        }, 200);
+      }
+    }
+
+    /* ==========================================================================
+       SPLIT VIEW & VIEW MODES
+       ========================================================================== */
+    function updateSplitPosition(percent) {
+      splitPercent = Math.max(0, Math.min(100, percent));
+
+      if (viewMode === 'split') {
+        splitDivider.style.display = 'block';
+        splitDivider.style.left = `${splitPercent}%`;
+        // Clip 'after' image container so left side is 'after' and right side is 'before'
+        containerAfter.style.clipPath = `polygon(0 0, ${splitPercent}% 0, ${splitPercent}% 100%, 0 100%)`;
+        containerBefore.style.display = 'block';
+        containerAfter.style.display = 'block';
+        badgeBefore.style.opacity = splitPercent > 90 ? '0.2' : '1';
+        badgeAfter.style.opacity = splitPercent < 10 ? '0.2' : '1';
+      } else if (viewMode === 'before') {
+        splitDivider.style.display = 'none';
+        containerAfter.style.clipPath = 'polygon(0 0, 0 0, 0 100%, 0 100%)';
+        containerBefore.style.display = 'block';
+        badgeBefore.style.opacity = '1';
+        badgeAfter.style.opacity = '0';
+      } else if (viewMode === 'after') {
+        splitDivider.style.display = 'none';
+        containerAfter.style.clipPath = 'polygon(0 0, 100% 0, 100% 100%, 0 100%)';
+        containerBefore.style.display = 'block';
+        badgeBefore.style.opacity = '0';
+        badgeAfter.style.opacity = '1';
+      }
+    }
+
+    function setViewMode(mode) {
+      viewMode = mode;
+      btnModeBefore.classList.toggle('active', mode === 'before');
+      btnModeSplit.classList.toggle('active', mode === 'split');
+      btnModeAfter.classList.toggle('active', mode === 'after');
+
+      if (mode === 'split') {
+        updateSplitPosition(splitPercent || 50);
+      } else if (mode === 'before') {
+        updateSplitPosition(0);
+      } else if (mode === 'after') {
+        updateSplitPosition(100);
+      }
+    }
+
+    btnModeBefore.addEventListener('click', () => setViewMode('before'));
+    btnModeSplit.addEventListener('click', () => setViewMode('split'));
+    btnModeAfter.addEventListener('click', () => setViewMode('after'));
+
+    /* ==========================================================================
+       SPLIT DIVIDER DRAGGING
+       ========================================================================== */
+    let isDraggingDivider = false;
+
+    function onDividerStart(e) {
+      isDraggingDivider = true;
+      splitDivider.classList.add('dragging');
+      e.preventDefault();
+    }
+
+    function onDividerMove(e) {
+      if (!isDraggingDivider) return;
+      const rect = viewportContainer.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const x = clientX - rect.left;
+      const percent = (x / rect.width) * 100;
+      updateSplitPosition(percent);
+    }
+
+    function onDividerEnd() {
+      if (isDraggingDivider) {
+        isDraggingDivider = false;
+        splitDivider.classList.remove('dragging');
+      }
+    }
+
+    splitDivider.addEventListener('mousedown', onDividerStart);
+    splitDivider.addEventListener('touchstart', onDividerStart, { passive: false });
+
+    window.addEventListener('mousemove', onDividerMove);
+    window.addEventListener('touchmove', onDividerMove, { passive: false });
+
+    window.addEventListener('mouseup', onDividerEnd);
+    window.addEventListener('touchend', onDividerEnd);
+
+    /* ==========================================================================
+       PANORAMIC CAMERA INTERACTION & SYNCHRONIZATION
+       ========================================================================== */
+    let isUserInteracting = false;
+    let onPointerDownPointerX = 0;
+    let onPointerDownPointerY = 0;
+    let onPointerDownLon = 0;
+    let onPointerDownLat = 0;
+    let activeTargetViewer = null;
+
+    function getInteractedViewer(e) {
+      if (isSynchronized) return 'both';
+      const rect = viewportContainer.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const x = clientX - rect.left;
+      const percent = (x / rect.width) * 100;
+      // If clicked on left side (within After clip area)
+      if (viewMode === 'split') {
+        return percent <= splitPercent ? viewerAfter : viewerBefore;
+      }
+      return viewMode === 'after' ? viewerAfter : viewerBefore;
+    }
+
+    function onPointerDown(e) {
+      if (isDraggingDivider) return;
+      // Ignore if clicking on buttons or dock
+      if (e.target.closest('.controls-overlay') || e.target.closest('.cam-toolbar') || e.target.closest('header')) return;
+
+      isUserInteracting = true;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      onPointerDownPointerX = clientX;
+      onPointerDownPointerY = clientY;
+
+      activeTargetViewer = getInteractedViewer(e);
+
+      if (activeTargetViewer === 'both') {
+        onPointerDownLon = viewerBefore.lon;
+        onPointerDownLat = viewerBefore.lat;
+      } else {
+        onPointerDownLon = activeTargetViewer.lon;
+        onPointerDownLat = activeTargetViewer.lat;
+      }
+    }
+
+    function onPointerMove(e) {
+      if (!isUserInteracting || isDraggingDivider) return;
+
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const deltaX = (onPointerDownPointerX - clientX) * 0.15;
+      const deltaY = (clientY - onPointerDownPointerY) * 0.15;
+
+      if (isSynchronized || activeTargetViewer === 'both') {
+        viewerBefore.targetLon = onPointerDownLon + deltaX;
+        viewerBefore.targetLat = onPointerDownLat + deltaY;
+        viewerAfter.targetLon = viewerBefore.targetLon;
+        viewerAfter.targetLat = viewerBefore.targetLat;
+      } else if (activeTargetViewer) {
+        activeTargetViewer.targetLon = onPointerDownLon + deltaX;
+        activeTargetViewer.targetLat = onPointerDownLat + deltaY;
+      }
+    }
+
+    function onPointerUp() {
+      isUserInteracting = false;
+      activeTargetViewer = null;
+    }
+
+    viewportContainer.addEventListener('mousedown', onPointerDown);
+    viewportContainer.addEventListener('touchstart', onPointerDown, { passive: true });
+
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('touchmove', onPointerMove, { passive: true });
+
+    window.addEventListener('mouseup', onPointerUp);
+    window.addEventListener('touchend', onPointerUp);
+
+    // Zooming via Wheel
+    viewportContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomDelta = e.deltaY * 0.05;
+      if (isSynchronized) {
+        viewerBefore.setFov(viewerBefore.fov + zoomDelta);
+        viewerAfter.setFov(viewerBefore.fov);
+      } else {
+        const target = getInteractedViewer(e);
+        if (target === 'both') {
+          viewerBefore.setFov(viewerBefore.fov + zoomDelta);
+          viewerAfter.setFov(viewerBefore.fov);
+        } else {
+          target.setFov(target.fov + zoomDelta);
+        }
+      }
+    }, { passive: false });
+
+    // Toolbar Controls
+    document.getElementById('btn-zoom-in').addEventListener('click', () => {
+      viewerBefore.setFov(viewerBefore.fov - 5);
+      if (isSynchronized) viewerAfter.setFov(viewerBefore.fov);
+    });
+
+    document.getElementById('btn-zoom-out').addEventListener('click', () => {
+      viewerBefore.setFov(viewerBefore.fov + 5);
+      if (isSynchronized) viewerAfter.setFov(viewerBefore.fov);
+    });
+
+    document.getElementById('btn-reset-cam').addEventListener('click', () => {
+      viewerBefore.targetLon = 90;
+      viewerBefore.targetLat = 0;
+      viewerBefore.fov = 75;
+
+      viewerAfter.targetLon = 90;
+      viewerAfter.targetLat = 0;
+      viewerAfter.fov = 75;
+    });
+
+    const btnAutoRotate = document.getElementById('btn-autorotate');
+    btnAutoRotate.addEventListener('click', () => {
+      autoRotate = !autoRotate;
+      btnAutoRotate.classList.toggle('active', autoRotate);
+    });
+
+    // Sync Toggle Button
+    btnSync.addEventListener('click', () => {
+      isSynchronized = !isSynchronized;
+      btnSync.classList.toggle('active', isSynchronized);
+      if (isSynchronized) {
+        syncLabel.innerText = "סנכרון פעיל";
+        // Align 'after' viewer with 'before' viewer upon re-syncing
+        viewerAfter.targetLon = viewerBefore.targetLon;
+        viewerAfter.targetLat = viewerBefore.targetLat;
+        viewerAfter.fov = viewerBefore.fov;
+      } else {
+        syncLabel.innerText = "ביטול סנכרון";
+      }
+    });
+
+    // Fullscreen Toggle
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => alert(`שגיאה במסך מלא: ${err.message}`));
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    // Responsive Window Resize
+    window.addEventListener('resize', () => {
+      const w = viewportContainer.clientWidth;
+      const h = viewportContainer.clientHeight;
+      viewerBefore.resize(w, h);
+      viewerAfter.resize(w, h);
+    });
+
+    /* ==========================================================================
+       ANIMATION LOOP
+       ========================================================================== */
+    let lastTime = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const deltaTime = (now - lastTime) / 1000;
+      lastTime = now;
+
+      viewerBefore.update(deltaTime);
+      viewerAfter.update(deltaTime);
+    }
+
+    // Keyboard Arrow Keys Panning
+    window.addEventListener('keydown', (e) => {
+      const step = 4;
+      if (e.key === 'ArrowLeft') {
+        viewerBefore.targetLon -= step;
+        if (isSynchronized) viewerAfter.targetLon = viewerBefore.targetLon;
+      } else if (e.key === 'ArrowRight') {
+        viewerBefore.targetLon += step;
+        if (isSynchronized) viewerAfter.targetLon = viewerBefore.targetLon;
+      } else if (e.key === 'ArrowUp') {
+        viewerBefore.targetLat += step;
+        if (isSynchronized) viewerAfter.targetLat = viewerBefore.targetLat;
+      } else if (e.key === 'ArrowDown') {
+        viewerBefore.targetLat -= step;
+        if (isSynchronized) viewerAfter.targetLat = viewerBefore.targetLat;
+      }
+    });
+
+    // Initialize Application
+    buildSetSelector();
+    updateSplitPosition(50);
+    switchPhotoSet(0);
+    requestAnimationFrame(animate);
+
+  </script>
+</body>
+</html>
